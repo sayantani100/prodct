@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Status</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0b0c10;
+            color: #f3f4f6;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
+
+        .login-bar {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px; padding: 16px 20px;
+        }
+        .login-bar input {
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; padding: 8px 12px; color: #f3f4f6; font-size: 0.85rem; outline: none;
+        }
+        .login-bar button {
+            background: linear-gradient(135deg, #6d28d9, #7c3aed); border: none; color: #fff;
+            padding: 8px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+        }
+        .login-bar .status { font-size: 0.85rem; color: #9ca3af; margin-left: auto; }
+        .login-bar .status strong { color: #e5e7eb; }
+        .login-bar .error { color: #fca5a5; font-size: 0.8rem; }
+
+        h1 { font-size: 2.4rem; font-weight: 700; }
+        .refresh-btn {
+            align-self: flex-start; background: transparent; border: 1px solid rgba(255,255,255,0.2);
+            color: #e5e7eb; padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;
+        }
+
+        .order-card {
+            border: 1px solid rgba(168,85,247,0.35); border-radius: 18px; padding: 24px 28px;
+            background: rgba(168,85,247,0.03);
+        }
+        .order-card .header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+        }
+        .order-card .header .title { font-weight: 700; font-size: 1.05rem; }
+        .order-card .header .subtitle { font-size: 0.78rem; color: #9ca3af; }
+        .status-badge {
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+            padding: 3px 12px; border-radius: 20px;
+        }
+        .status-badge.PENDING_REVIEW { background: rgba(234,179,8,0.15); color: #fde047; border: 1px solid rgba(234,179,8,0.3); }
+        .status-badge.CONFIRMED { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+        .status-badge.REJECTED { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+
+        .field-row { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 0.9rem; }
+        .field-row .dot { color: #a855f7; }
+        .field-row .field-label { color: #9ca3af; min-width: 170px; }
+        .field-row .field-value { color: #e5e7eb; flex: 1; }
+        .field-row input, .field-row select {
+            flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px; padding: 5px 8px; color: #f3f4f6; font-size: 0.85rem; outline: none;
+        }
+        .card-actions { margin-top: 14px; display: flex; gap: 10px; align-items: center; }
+        .save-btn {
+            background: linear-gradient(135deg, #6366f1, #a855f7); border: none; color: #fff;
+            padding: 8px 18px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+        }
+        .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .save-status { font-size: 0.78rem; }
+        .save-status.ok { color: #86efac; }
+        .save-status.err { color: #fca5a5; }
+
+        .placeholder-text { color: #6b7280; font-style: italic; text-align: center; padding: 30px; }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <div class="login-bar">
+        <input type="text" id="loginUsername" placeholder="Username">
+        <input type="password" id="loginPassword" placeholder="Password">
+        <button id="loginBtn">Login</button>
+        <span class="status" id="sessionStatus">Not signed in</span>
+    </div>
+
+    <h1>Status of the product</h1>
+    <button class="refresh-btn" id="refreshBtn">Refresh</button>
+
+    <div id="ordersContainer">
+        <p class="placeholder-text">Sign in to view orders.</p>
+    </div>
+
+</div>
+
+<script>
+    const API_BASE = 'http://localhost:8080';
+    let authToken = null;
+
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginBtn = document.getElementById('loginBtn');
+    const sessionStatus = document.getElementById('sessionStatus');
+    const ordersContainer = document.getElementById('ordersContainer');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    loginBtn.addEventListener('click', async () => {
+        const username = loginUsername.value.trim();
+        const password = loginPassword.value;
+        if (!username || !password) {
+            sessionStatus.innerHTML = '<span class="error">Enter username and password.</span>';
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (!response.ok) throw new Error(response.status === 401 ? 'Invalid credentials.' : `Login failed (${response.status}).`);
+            const data = await response.json();
+            authToken = data.token;
+            sessionStatus.innerHTML = `Signed in as <strong>${escapeHtml(username)}</strong>`;
+            loginPassword.value = '';
+            loadOrders();
+        } catch (error) {
+            sessionStatus.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+        }
+    });
+
+    function authHeaders() {
+        const headers = { 'Content-Type': 'application/json' };
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        return headers;
+    }
+
+    async function loadOrders() {
+        if (!authToken) {
+            ordersContainer.innerHTML = '<p class="placeholder-text">Sign in to view orders.</p>';
+            return;
+        }
+        ordersContainer.innerHTML = '<p class="placeholder-text">Loading orders...</p>';
+        try {
+            const response = await fetch(`${API_BASE}/api/equipment-orders`, { headers: authHeaders() });
+            if (!response.ok) throw new Error(`Failed to load orders (${response.status})`);
+            const orders = await response.json();
+            renderOrders(orders);
+        } catch (error) {
+            ordersContainer.innerHTML = `<p class="placeholder-text">${escapeHtml(error.message)}</p>`;
+        }
+    }
+
+    function renderOrders(orders) {
+        if (!orders || orders.length === 0) {
+            ordersContainer.innerHTML = '<p class="placeholder-text">No orders found.</p>';
+            return;
+        }
+
+        ordersContainer.innerHTML = orders.map(o => `
+            <div class="order-card" data-order-id="${o.id}" style="margin-bottom:20px;">
+                <div class="header">
+                    <div>
+                        <div class="title">Order #${o.id} &middot; ${escapeHtml(o.equipmentType || '')}</div>
+                        <div class="subtitle">Created ${o.createdAt ? escapeHtml(o.createdAt) : 'nil'} by ${escapeHtml(o.createdBy || 'nil')}</div>
+                    </div>
+                    <span class="status-badge ${o.status}">${escapeHtml((o.status || '').replace('_', ' '))}</span>
+                </div>
+
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Supervision</span>
+                    <input type="text" data-field="supervision" value="${escapeHtml(o.supervision || '')}"></div>
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Checked by</span>
+                    <span class="field-value">${escapeHtml(o.reviewedBy || 'nil')}</span></div>
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Date of making the order</span>
+                    <span class="field-value">${escapeHtml(o.createdAt || 'nil')}</span></div>
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Status of the order</span>
+                    <select data-field="status">
+                        <option value="PENDING_REVIEW" ${o.status === 'PENDING_REVIEW' ? 'selected' : ''}>Pending Review</option>
+                        <option value="CONFIRMED" ${o.status === 'CONFIRMED' ? 'selected' : ''}>Confirmed</option>
+                        <option value="REJECTED" ${o.status === 'REJECTED' ? 'selected' : ''}>Rejected</option>
+                    </select></div>
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Follow up</span>
+                    <input type="text" data-field="followUp" value="${escapeHtml(o.followUp || '')}"></div>
+                <div class="field-row"><span class="dot">&#8226;</span><span class="field-label">Review</span>
+                    <input type="text" data-field="reviewNotes" value="${escapeHtml(o.reviewNotes || '')}"></div>
+
+                <div class="card-actions">
+                    <button class="save-btn" data-save="${o.id}">Save</button>
+                    <span class="save-status" data-savestatus="${o.id}"></span>
+                </div>
+            </div>
+        `).join('');
+
+        ordersContainer.querySelectorAll('[data-save]').forEach(btn => {
+            btn.addEventListener('click', () => saveOrder(btn.getAttribute('data-save')));
+        });
+    }
+
+    async function saveOrder(orderId) {
+        const card = ordersContainer.querySelector(`.order-card[data-order-id="${orderId}"]`);
+        const btn = card.querySelector(`[data-save="${orderId}"]`);
+        const statusEl = card.querySelector(`[data-savestatus="${orderId}"]`);
+        const val = (field) => card.querySelector(`[data-field="${field}"]`).value;
+
+        btn.disabled = true;
+        statusEl.textContent = '';
+        statusEl.className = 'save-status';
+
+        try {
+            const response = await fetch(`${API_BASE}/api/equipment-orders/${orderId}/status`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    supervision: val('supervision'),
+                    followUp: val('followUp'),
+                    reviewNotes: val('reviewNotes'),
+                    status: val('status')
+                })
+            });
+            if (!response.ok) throw new Error(`Save failed (${response.status})`);
+            statusEl.textContent = 'Saved.';
+            statusEl.className = 'save-status ok';
+            loadOrders();
+        } catch (error) {
+            statusEl.textContent = error.message;
+            statusEl.className = 'save-status err';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    refreshBtn.addEventListener('click', loadOrders);
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+services:
+  ocr-engine:
+    build: ./ocr-engine-python
+    # SECURITY: no `ports:` mapping -- only reachable from other containers
+    # on app-network (i.e. ocr-backend), not from outside Docker at all.
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OCR_ENGINE_SHARED_SECRET=${OCR_ENGINE_SHARED_SECRET}
+    volumes:
+      - ./ocr-engine-python:/app
+      # Persist downloaded model weights across rebuilds/restarts --
+      # without these, TrOCR (~330MB) and PaddleOCR's detection models
+      # re-download from scratch every time this container is recreated.
+      - huggingface_cache:/root/.cache/huggingface
+      - paddleocr_cache:/root/.paddleocr
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ocr-backend:
+    build: ./demo
+    ports:
+      # Bound to 127.0.0.1 only -- reachable from this machine, not from
+      # other devices on the network.
+      - "127.0.0.1:8080:8080"
+    environment:
+      - OCR_ENGINE_URL=http://ocr-engine:8000
+      - OCR_ENGINE_SHARED_SECRET=${OCR_ENGINE_SHARED_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - ocr-engine
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    # SECURITY: no `ports:` mapping -- ocr-engine reaches it internally at
+    # http://ollama:11434.
+    volumes:
+      - ollama_storage:/root/.ollama
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  ollama_storage:
+  huggingface_cache:
+  paddleocr_cache:

@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Document Upload Pass</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0b0c10;
+            color: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+            overflow-x: hidden;
+            position: relative;
+        }
+        body::before {
+            content: ''; position: absolute; width: 350px; height: 350px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, rgba(0,0,0,0) 70%);
+            top: -100px; right: -50px; z-index: 0; pointer-events: none;
+        }
+        body::after {
+            content: ''; position: absolute; width: 400px; height: 400px;
+            background: radial-gradient(circle, rgba(6, 182, 212, 0.25) 0%, rgba(0,0,0,0) 70%);
+            bottom: -150px; left: -100px; z-index: 0; pointer-events: none;
+        }
+        .page { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 24px; z-index: 1; }
+        .app-container {
+            width: 100%;
+            background: rgba(17, 18, 24, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+        h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.05em; margin-bottom: 8px; color: #ffffff; line-height: 1.2; }
+        .title-gradient {
+            background: linear-gradient(to right, #ffffff 40%, #a855f7 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .subtitle { font-size: 0.95rem; color: #9ca3af; margin-bottom: 32px; font-weight: 400; }
+        h2 {
+            font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 16px;
+            color: #e5e7eb; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        }
+        h3 { font-size: 1rem; font-weight: 600; color: #a855f7; margin-bottom: 10px; }
+        .upload-zone {
+            background: rgba(255, 255, 255, 0.02);
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; cursor: pointer;
+        }
+        .upload-zone:hover {
+            border-color: rgba(168, 85, 247, 0.5); background: rgba(255, 255, 255, 0.04);
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.1);
+        }
+        .file-native-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 5; }
+        .file-status-label { font-size: 0.95rem; color: #9ca3af; pointer-events: none; margin-bottom: 16px; display: block; transition: color 0.2s; }
+        .action-btn {
+            position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+            background: transparent; color: #ffffff; font-size: 0.9rem; font-weight: 600; letter-spacing: 0.05em;
+            text-transform: uppercase; padding: 10px 24px; border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 30px; cursor: pointer; transition: all 0.3s ease; z-index: 10;
+        }
+        .action-btn::after { content: '➔'; font-size: 1rem; transition: transform 0.2s ease; }
+        .action-btn:not(:disabled):hover {
+            background: linear-gradient(90deg, rgba(168, 85, 247, 0.2), rgba(6, 182, 212, 0.2));
+            border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+        }
+        .action-btn:not(:disabled):hover::after { transform: translateX(4px); }
+        .action-btn:disabled { opacity: 0.4; color: #6b7280; border-color: rgba(255, 255, 255, 0.05); cursor: not-allowed; }
+        .small-btn {
+            font-size: 0.75rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+            padding: 6px 14px; border-radius: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.15);
+            background: transparent; color: #e5e7eb; transition: all 0.2s ease;
+        }
+        .small-btn.confirm { border-color: rgba(34,197,94,0.4); color: #86efac; }
+        .small-btn.confirm:hover { background: rgba(34,197,94,0.12); }
+        .small-btn.reject { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+        .small-btn.reject:hover { background: rgba(239,68,68,0.12); }
+        .small-btn.refresh, .small-btn.logout { color: #9ca3af; }
+        .small-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .matrix-loader {
+            display: none; align-items: center; justify-content: center; gap: 12px; margin: 20px 0; padding: 14px;
+            background: rgba(168, 85, 247, 0.06); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 12px;
+            color: #c084fc; font-size: 0.9rem; font-weight: 500; animation: pulseGlow 2s infinite ease-in-out;
+        }
+        @keyframes pulseGlow { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 28px 0; }
+        .output-viewport {
+            background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 14px; padding: 20px; min-height: 80px; max-height: 480px; overflow-y: auto;
+        }
+        .placeholder-text { color: #6b7280; font-style: italic; font-size: 0.9rem; text-align: center; margin-top: 20px; }
+        .badge {
+            display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+            text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-left: 8px;
+        }
+        .badge.trocr { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+        .badge.fallback { background: rgba(234,179,8,0.15); color: #fde047; border: 1px solid rgba(234,179,8,0.3); }
+        .badge.pending { background: rgba(234,179,8,0.15); color: #fde047; border: 1px solid rgba(234,179,8,0.3); }
+        .result-block { margin-bottom: 18px; }
+        .result-block .label { color: #06b6d4; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+        .result-block .value { color: #e5e7eb; font-size: 0.95rem; line-height: 1.6; }
+        .lines-list { list-style: none; }
+        .lines-list li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.9rem; color: #d1d5db; }
+        .lines-list li:last-child { border-bottom: none; }
+        .disclaimer {
+            font-size: 0.78rem; color: #9ca3af; background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px 14px; margin-top: 8px;
+        }
+        .error-card {
+            background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 12px; padding: 16px; color: #fca5a5;
+        }
+        .error-card h3 { color: #fca5a5; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .error-card p { font-size: 0.85rem; color: #f87171; line-height: 1.4; }
+        .order-card {
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px; padding: 16px; margin-bottom: 12px;
+        }
+        .order-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 12px; }
+        .order-card-header .title { font-weight: 600; color: #ffffff; font-size: 0.95rem; }
+        .order-card-header .meta { font-size: 0.75rem; color: #6b7280; }
+        .order-card .transcript { font-size: 0.85rem; color: #9ca3af; line-height: 1.5; margin: 8px 0 12px; }
+        .order-card .actions { display: flex; gap: 8px; }
+        .login-row { display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .login-row input {
+            flex: 1; min-width: 160px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 10px 14px; color: #f3f4f6; font-size: 0.9rem; outline: none;
+        }
+        .login-row input:focus { border-color: rgba(168, 85, 247, 0.5); }
+        .session-bar {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            font-size: 0.85rem; color: #9ca3af; margin-bottom: 16px;
+        }
+        .session-bar strong { color: #e5e7eb; }
+        .mediclaim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 28px; }
+        .field-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+        .field-row { display: flex; gap: 8px; font-size: 0.88rem; }
+        .field-row .field-label { color: #9ca3af; min-width: 130px; }
+        .field-row .field-value { color: #e5e7eb; font-weight: 500; }
+        .field-row .field-value.is-nil { color: #6b7280; font-style: italic; font-weight: 400; }
+        .field-row .field-value.is-sensitive { color: #fca5a5; }
+        .section-tag {
+            display: inline-block; background: rgba(255,255,255,0.06); color: #e5e7eb;
+            font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 8px; margin-bottom: 4px;
+        }
+        .insurance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        @media (max-width: 720px) {
+            .mediclaim-grid, .insurance-grid { grid-template-columns: 1fr; }
+        }
+        .mediclaim-heading { font-size: 1.6rem; font-weight: 700; margin: 4px 0 20px; color: #ffffff; }
+        .sensitive-warning {
+            font-size: 0.8rem; color: #fca5a5; background: rgba(239,68,68,0.06);
+            border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <div class="app-container">
+        <h1>uploaded <span class="title-gradient">document preview</span></h1>
+        <p class="subtitle">Select a handwritten prescription or declaration file to process.</p>
+
+        <div id="loginPanel">
+            <h2>Sign In</h2>
+            <div class="login-row">
+                <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
+                <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+                <button id="loginBtn" class="action-btn">Login</button>
+            </div>
+            <div id="loginError" class="disclaimer" style="display:none;"></div>
+        </div>
+
+        <div id="sessionBar" class="session-bar" style="display:none;">
+            <span>Signed in as <strong id="sessionUsername"></strong></span>
+            <button id="logoutBtn" class="small-btn logout">Log out</button>
+        </div>
+
+        <hr>
+
+        <div class="upload-zone">
+            <input type="file" id="fileInput" class="file-native-input" accept="image/*,application/pdf">
+            <span id="filePromptLabel" class="file-status-label">Drag &amp; drop or browse prescription documents</span>
+            <button id="processBtn" class="action-btn" disabled>Upload</button>
+        </div>
+
+        <div id="statusText" class="matrix-loader">
+            <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none" style="animation: spin 1s linear infinite;">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
+                <path d="M4 12a8 8 0 018-8V4" stroke-linecap="round"/>
+            </svg>
+            <span>Processing handwriting matrix... This can take a few minutes.</span>
+        </div>
+
+        <hr>
+
+        <h2>Extraction Result</h2>
+        <div id="resultContainer" class="output-viewport">
+            <p class="placeholder-text">No file processed yet. Select a document above to begin extraction.</p>
+        </div>
+    </div>
+
+    <div class="app-container" id="mediclaimContainer" style="display:none;">
+        <div class="sensitive-warning">
+            ⚠ This form displays sensitive patient information, including insurance IDs. Any field the system
+            could not confirm from the source document is shown as <strong>nil</strong> rather than guessed --
+            verify all values against the original document before relying on them.
+        </div>
+
+        <div class="mediclaim-grid">
+            <div>
+                <div class="section-tag">Patient</div>
+                <h3 id="permAddrHeading">permanent address</h3>
+                <div class="field-list" id="permAddrFields"></div>
+                <h3 style="margin-top:20px;" id="tempAddrHeading">temporary address</h3>
+                <div class="field-list" id="tempAddrFields"></div>
+            </div>
+            <div>
+                <div class="section-tag">Emergency contact</div>
+                <div class="field-list" id="emergencyFields" style="margin-top:10px;"></div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="mediclaim-heading">mediclaim details</div>
+        <div class="insurance-grid" id="insuranceGrid"></div>
+    </div>
+
+    <div class="app-container">
+        <h2>
+            Pending Review Queue
+            <button id="refreshQueueBtn" class="small-btn refresh">Refresh</button>
+        </h2>
+        <div id="queueContainer" class="output-viewport">
+            <p class="placeholder-text">Sign in to view the review queue.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const API_BASE = 'http://localhost:8080';
+
+    let authToken = null;
+    let authUsername = null;
+
+    const loginPanel = document.getElementById('loginPanel');
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginError = document.getElementById('loginError');
+    const sessionBar = document.getElementById('sessionBar');
+    const sessionUsername = document.getElementById('sessionUsername');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    const fileInput = document.getElementById('fileInput');
+    const processBtn = document.getElementById('processBtn');
+    const statusText = document.getElementById('statusText');
+    const resultContainer = document.getElementById('resultContainer');
+    const filePromptLabel = document.getElementById('filePromptLabel');
+    const queueContainer = document.getElementById('queueContainer');
+    const refreshQueueBtn = document.getElementById('refreshQueueBtn');
+    const mediclaimContainer = document.getElementById('mediclaimContainer');
+
+    let selectedFile = null;
+
+    function authHeaders() {
+        return authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+    }
+
+    loginBtn.addEventListener('click', async () => {
+        loginError.style.display = 'none';
+        const username = loginUsername.value.trim();
+        const password = loginPassword.value;
+        if (!username || !password) {
+            loginError.textContent = 'Enter both a username and password.';
+            loginError.style.display = 'block';
+            return;
+        }
+        loginBtn.disabled = true;
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (!response.ok) {
+                throw new Error(response.status === 401 ? 'Invalid credentials.' : `Login failed (${response.status}).`);
+            }
+            const data = await response.json();
+            authToken = data.token;
+            authUsername = username;
+            loginPassword.value = '';
+            loginPanel.style.display = 'none';
+            sessionBar.style.display = 'flex';
+            sessionUsername.textContent = authUsername;
+            loadPendingQueue();
+        } catch (error) {
+            loginError.textContent = error.message;
+            loginError.style.display = 'block';
+        } finally {
+            loginBtn.disabled = false;
+        }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+        authToken = null;
+        authUsername = null;
+        loginPanel.style.display = 'block';
+        sessionBar.style.display = 'none';
+        queueContainer.innerHTML = '<p class="placeholder-text">Sign in to view the review queue.</p>';
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            filePromptLabel.innerText = `Selected: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
+            filePromptLabel.style.color = '#a855f7';
+            processBtn.disabled = false;
+        } else {
+            selectedFile = null;
+            filePromptLabel.innerText = "Drag & drop or browse prescription documents";
+            filePromptLabel.style.color = '#9ca3af';
+            processBtn.disabled = true;
+        }
+    });
+
+    processBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!selectedFile) return;
+
+        statusText.style.display = 'flex';
+        resultContainer.innerHTML = '';
+        mediclaimContainer.style.display = 'none';
+        processBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+            const response = await fetch(`${API_BASE}/api/ocr/process`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: formData
+            });
+            if (!response.ok) {
+                throw new Error(`Server returned error response code: ${response.status}`);
+            }
+            const rawTextResponse = await response.text();
+            displayResults(rawTextResponse);
+            if (authToken) loadPendingQueue();
+        } catch (error) {
+            console.error('OCR Pipeline Exception:', error);
+            displayErrorState(error.message);
+        } finally {
+            statusText.style.display = 'none';
+            processBtn.disabled = false;
+        }
+    });
+
+    function fieldRow(label, value, sensitive) {
+        const isNil = !value || String(value).trim() === '' || String(value).trim().toLowerCase() === 'nil';
+        const displayValue = isNil ? 'nil' : value;
+        const cls = isNil ? 'is-nil' : (sensitive ? 'is-sensitive' : '');
+        return `<div class="field-row"><span class="field-label">${escapeHtml(label)}:</span><span class="field-value ${cls}">${escapeHtml(displayValue)}</span></div>`;
+    }
+
+    function renderAddressBlock(block) {
+        if (!block) block = {};
+        return fieldRow('patient name', block.patientName) +
+            fieldRow('address', block.address) +
+            fieldRow('location', block.location) +
+            fieldRow('phone number', block.phoneNumber) +
+            fieldRow('email', block.email);
+    }
+
+    function renderMediclaim(mediclaim) {
+        if (!mediclaim) {
+            mediclaimContainer.style.display = 'none';
+            return;
+        }
+        mediclaimContainer.style.display = 'block';
+
+        const patient = mediclaim.patient || {};
+        const perm = patient.permanentAddress || patient.permanent_address || {};
+        const temp = patient.temporaryAddress || patient.temporary_address || {};
+        const emergency = mediclaim.emergencyContact || mediclaim.emergency_contact || {};
+        const insuranceList = mediclaim.insurance || [];
+
+        document.getElementById('permAddrFields').innerHTML = renderAddressBlock(perm);
+
+        const sameAsPermanent = temp.sameAsPermanent || temp.same_as_permanent;
+        document.getElementById('tempAddrHeading').innerHTML =
+            'temporary address' + (sameAsPermanent ? ' <span class="disclaimer" style="display:inline;padding:2px 8px;">same as permanent</span>' : '');
+        document.getElementById('tempAddrFields').innerHTML = sameAsPermanent
+            ? '<p class="placeholder-text" style="margin:0;text-align:left;">Same as permanent address.</p>'
+            : renderAddressBlock(temp);
+
+        document.getElementById('emergencyFields').innerHTML =
+            fieldRow('name', emergency.name) +
+            fieldRow('address', emergency.address) +
+            fieldRow('location', emergency.location) +
+            fieldRow('phone number', emergency.phoneNumber || emergency.phone_number) +
+            fieldRow('relation to patient', emergency.relationToPatient || emergency.relation_to_patient);
+
+        const insuranceGrid = document.getElementById('insuranceGrid');
+        insuranceGrid.innerHTML = [0, 1, 2].map(i => {
+            const ins = insuranceList[i] || {};
+            return `
+                <div>
+                    <h3>insurance ${i + 1}</h3>
+                    <div class="field-list">
+                        ${fieldRow('insurance name', ins.insuranceName || ins.insurance_name)}
+                        ${fieldRow('location', ins.location)}
+                        ${fieldRow('unique number', ins.uniqueNumber || ins.unique_number)}
+                        ${fieldRow('type', ins.type)}
+                        ${fieldRow('ssn id', ins.ssnId || ins.ssn_id, true)}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function displayResults(rawText) {
+        resultContainer.innerHTML = '';
+        mediclaimContainer.style.display = 'none';
+
+        if (!rawText || rawText.trim().length === 0) {
+            resultContainer.innerHTML = '<p style="color: #fbbf24; text-align: center; font-size: 0.9rem; margin-top: 20px;">Document analyzed, but no content was returned.</p>';
+            return;
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(rawText);
+        } catch (jsonEvalError) {
+            resultContainer.innerHTML = `<div class="result-block"><div class="value">${escapeHtml(rawText)}</div></div>`;
+            return;
+        }
+
+        if (parsed.error) {
+            displayErrorState(parsed.error);
+            return;
+        }
+
+        const lines = parsed.Lines || [];
+        const comp = parsed.Comprehension || {};
+        const engine = parsed.RecognitionEngine || 'unknown';
+
+        let html = '';
+        html += `<div class="result-block">
+            <div class="label">Recognition Engine</div>
+            <div class="value">${escapeHtml(engine)}
+                <span class="badge ${engine === 'trocr' ? 'trocr' : 'fallback'}">${engine === 'trocr' ? 'Handwriting Model' : 'Lower-Trust Fallback'}</span>
+            </div>
+        </div>`;
+
+        if (comp.document_classification) {
+            html += `<div class="result-block"><div class="label">Document Type</div><div class="value">${escapeHtml(comp.document_classification)}</div></div>`;
+        }
+        if (comp.order_action_plan) {
+            html += `<div class="result-block"><div class="label">Proposed Action</div><div class="value">${escapeHtml(comp.order_action_plan)}</div></div>`;
+        }
+        if (comp.clean_transcript) {
+            html += `<div class="result-block"><div class="label">Cleaned Transcript</div><div class="value">${escapeHtml(comp.clean_transcript)}</div></div>`;
+        }
+        if (comp._warning) {
+            html += `<div class="disclaimer">⚠ ${escapeHtml(comp._warning)}</div>`;
+        }
+        if (lines.length > 0) {
+            html += `<div class="result-block"><div class="label">Raw Detected Lines</div>
+                <ul class="lines-list">${lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
+            </div>`;
+        }
+        if (comp.order_required) {
+            html += `<div class="disclaimer">This document was flagged as requiring action and has been added to the <strong>Pending Review Queue</strong> below. Nothing is acted on until a reviewer confirms it.</div>`;
+        }
+
+        resultContainer.innerHTML = html || '<p class="placeholder-text">No extractable content.</p>';
+
+        renderMediclaim(comp.mediclaim);
+    }
+
+    function displayErrorState(msg) {
+        resultContainer.innerHTML = `
+            <div class="error-card">
+                <h3>⚠️ Processing Failure</h3>
+                <p>${escapeHtml(String(msg))}</p>
+                <p style="margin-top: 8px; opacity: 0.8; font-size: 0.8rem;">Verify that your Spring Boot container application routing node is live on port 8080.</p>
+            </div>
+        `;
+    }
+
+    async function loadPendingQueue() {
+        if (!authToken) {
+            queueContainer.innerHTML = '<p class="placeholder-text">Sign in to view the review queue.</p>';
+            return;
+        }
+        queueContainer.innerHTML = '<p class="placeholder-text">Loading pending orders...</p>';
+        try {
+            const response = await fetch(`${API_BASE}/api/orders/pending`, { headers: authHeaders() });
+            if (response.status === 401 || response.status === 403) {
+                authToken = null;
+                loginPanel.style.display = 'block';
+                sessionBar.style.display = 'none';
+                queueContainer.innerHTML = '<p class="placeholder-text">Session expired. Please sign in again.</p>';
+                return;
+            }
+            if (!response.ok) throw new Error(`Server returned error response code: ${response.status}`);
+            const orders = await response.json();
+            renderQueue(orders);
+        } catch (error) {
+            queueContainer.innerHTML = `<div class="error-card"><h3>⚠️ Could not load review queue</h3><p>${escapeHtml(error.message)}</p></div>`;
+        }
+    }
+
+    function renderQueue(orders) {
+        if (!orders || orders.length === 0) {
+            queueContainer.innerHTML = '<p class="placeholder-text">No orders awaiting review.</p>';
+            return;
+        }
+        queueContainer.innerHTML = orders.map(order => `
+            <div class="order-card" data-order-id="${order.id}">
+                <div class="order-card-header">
+                    <div>
+                        <div class="title">${escapeHtml(order.patientName || 'Unknown Patient')}</div>
+                        <div class="meta">${escapeHtml(order.documentType || 'Unclassified')} &middot; ${escapeHtml(order.recognitionEngine || 'unknown engine')}</div>
+                    </div>
+                    <span class="badge pending">Pending Review</span>
+                </div>
+                <div class="transcript">${escapeHtml(order.rawTranscript || order.actionPlan || 'No transcript available.')}</div>
+                <div class="actions">
+                    <button class="small-btn confirm" onclick="reviewOrder(${order.id}, 'confirm')">Confirm</button>
+                    <button class="small-btn reject" onclick="reviewOrder(${order.id}, 'reject')">Reject</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function reviewOrder(orderId, action) {
+        const card = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
+        const buttons = card ? card.querySelectorAll('button') : [];
+        buttons.forEach(b => b.disabled = true);
+        try {
+            const response = await fetch(`${API_BASE}/api/orders/${orderId}/${action}?reviewedBy=${encodeURIComponent(authUsername || 'unknown')}`, {
+                method: 'POST', headers: authHeaders()
+            });
+            if (response.status === 401 || response.status === 403) throw new Error('Not authorized to perform this action.');
+            if (!response.ok) throw new Error(`Server returned error response code: ${response.status}`);
+            if (card) card.remove();
+            if (queueContainer.children.length === 0) {
+                queueContainer.innerHTML = '<p class="placeholder-text">No orders awaiting review.</p>';
+            }
+        } catch (error) {
+            alert(`Failed to ${action} order: ${error.message}`);
+            buttons.forEach(b => b.disabled = false);
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    refreshQueueBtn.addEventListener('click', loadPendingQueue);
+</script>
+</body>
+</html>

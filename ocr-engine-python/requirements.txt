@@ -1,0 +1,23 @@
+fastapi==0.110.0
+uvicorn==0.28.0
+pillow==10.2.0
+python-multipart==0.0.9
+pdf2image==1.17.0
+numpy==1.26.4
+paddleocr==2.7.3
+pyspellchecker>=0.8.0
+
+# --- Added for handwriting recognition (TrOCR) ---
+# torch is intentionally NOT listed here -- it's installed separately in the
+# Dockerfile as a CPU-only wheel. Listing it here with a plain version pin
+# makes pip pull the default GPU/CUDA build (~900MB combined with cuDNN),
+# which is unusable anyway since this container has no GPU.
+transformers>=4.30.0
+sentencepiece
+
+# --- Explicitly pinned: main.py imports these directly (cv2, requests) but
+# they weren't listed before -- they were likely only present as transitive
+# dependencies of paddleocr, which is fragile. Pinning them directly avoids
+# breakage if paddleocr's own dependency versions change.
+opencv-python-headless>=4.8.0
+requests>=2.31.0
